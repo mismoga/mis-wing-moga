@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MIS WING MOGA</title>
+<style>
+body{margin:0;font-family:Arial;background:#f5f7fb;color:#172033}header{background:#102845;color:#fff;padding:18px 25px;display:flex;justify-content:space-between;align-items:center;gap:15px}.brand h1{margin:0}.brand p{margin:4px 0 0}nav button{background:none;border:0;color:#fff;padding:10px 14px;cursor:pointer;border-radius:7px}nav button.active,nav button:hover{background:#1769e0}main{max-width:1400px;margin:auto;padding:25px}.page{display:none}.page.active{display:block}.panel{background:#fff;border:1px solid #dce3ec;border-radius:12px;padding:20px;margin-bottom:18px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.full{grid-column:1/-1}label{display:block;font-weight:bold;font-size:13px;margin-bottom:6px}input,textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:7px;box-sizing:border-box}.btn{background:#1769e0;color:white;border:0;border-radius:7px;padding:10px 16px;font-weight:bold;cursor:pointer}.green{background:#138a43}.toolbar{display:flex;gap:10px;margin-bottom:15px}.toolbar input{max-width:520px}.table{overflow:auto}table{border-collapse:collapse;width:100%;min-width:1200px}th,td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:13px}th{background:#f7f9fc}.pending{color:#b45309;font-weight:bold}.updated{color:#15803d;font-weight:bold}.error{color:#dc2626}.notice{background:#eff6ff;border:1px solid #bfdbfe;padding:12px;border-radius:7px}@media(max-width:850px){.grid{grid-template-columns:1fr}.full{grid-column:auto}header{flex-direction:column;align-items:flex-start}}
+</style></head><body>
+<header><div class="brand"><h1>MIS WING MOGA</h1><p>Data Collection for Class Updation</p></div>
+<nav><button class="active" onclick="showPage('home',this)">Home</button><button onclick="showPage('all',this)">All Records</button><button onclick="showPage('update',this)">🔒 Update Record</button></nav></header>
+<main>
+<section id="home" class="page active"><div class="panel"><h2>Student Data Entry</h2>
+<form id="entry" class="grid">
+<div><label>School Name</label><input name="school_name" required></div>
+<div><label>School UDISE Code</label><input name="udise_code" required></div>
+<div><label>PEN Number</label><input name="pen_number" required></div>
+<div><label>Student Name</label><input name="student_name" required></div>
+<div><label>Father Name</label><input name="father_name" required></div>
+<div><label>Old Class</label><input name="old_class" required></div>
+<div><label>New Class</label><input name="new_class" required></div>
+<div><label>Email ID</label><input name="email_id" type="email" required></div>
+<div><button class="btn">Submit Student Record</button></div></form><p id="entryMsg"></p></div></section>
+
+<section id="all" class="page"><div class="panel"><h2>All Records</h2><div class="toolbar"><input id="q" placeholder="Search School, UDISE, PEN, Student, Father or Email" oninput="loadRecords()"></div><div id="records" class="table"></div></div></section>
+
+<section id="update" class="page"><div id="login" class="panel" style="max-width:500px"><h2>🔒 Update Record</h2><div class="notice">Authorized access only.</div><br><input id="pw" type="password" placeholder="Enter update password" autocomplete="off"><br><br><button class="btn" onclick="unlock()">Unlock</button><p id="loginMsg" class="error"></p></div>
+<div id="admin" class="panel" style="display:none"><h2>Update Student Record</h2><div class="toolbar"><input id="uq" placeholder="Search PEN, student name or father name" oninput="findRecords()"></div><div id="editList"></div></div></section>
+</main>
+<script>
+let token="";
+const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+function showPage(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
+async function loadRecords(){let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));let a=await r.json();records.innerHTML=a.length?`<table><tr><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th><th>Father</th><th>Old</th><th>New</th><th>Email</th><th>BMIS Remarks</th></tr>${a.map(x=>`<tr><td>${esc(x.school_name)}</td><td>${esc(x.udise_code)}</td><td>${esc(x.pen_number)}</td><td>${esc(x.student_name)}</td><td>${esc(x.father_name)}</td><td>${esc(x.old_class)}</td><td>${esc(x.new_class)}</td><td>${esc(x.email_id)}</td><td class="${x.bmis_remarks?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td></tr>`).join("")}</table>`:"No records found."}
+entry.onsubmit=async e=>{e.preventDefault();let r=await fetch("/api/records",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.fromEntries(new FormData(entry)))});entryMsg.textContent=r.ok?"Record submitted successfully.":"Unable to save record.";if(r.ok)entry.reset();}
+async function unlock(){let r=await fetch("/api/admin/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw.value})});if(!r.ok){loginMsg.textContent="Incorrect password.";return}token=(await r.json()).token;login.style.display="none";admin.style.display="block";findRecords();}
+async function findRecords(){if(!token)return;let r=await fetch("/api/records?q="+encodeURIComponent(uq.value||""),{headers:{"x-admin-token":token}});let a=await r.json();editList.innerHTML=a.length?a.map(x=>`<div class="panel"><div class="grid">
+${field("School Name","s",x)}${field("UDISE Code","u",x)}${field("PEN Number","p",x)}${field("Student Name","n",x)}${field("Father Name","f",x)}${field("Old Class","o",x)}${field("New Class","c",x)}${field("Email ID","e",x)}
+<div class="full"><label>Remarks By BMIS</label><textarea id="r${x.id}">${esc(x.bmis_remarks)}</textarea></div></div><br><button class="btn green" onclick="saveUpdate(${x.id})">Save Update</button><span id="m${x.id}"></span></div>`).join(""):"No matching record."}
+function field(label,p,x){return `<div><label>${label}</label><input id="${p}${x.id}" value="${esc(x[{s:"school_name",u:"udise_code",p:"pen_number",n:"student_name",f:"father_name",o:"old_class",c:"new_class",e:"email_id"}[p]])}"></div>`}
+async function saveUpdate(id){let v=p=>document.getElementById(p+id).value;let body={school_name:v("s"),udise_code:v("u"),pen_number:v("p"),student_name:v("n"),father_name:v("f"),old_class:v("o"),new_class:v("c"),email_id:v("e"),bmis_remarks:document.getElementById("r"+id).value};let r=await fetch("/api/records/"+id,{method:"PUT",headers:{"Content-Type":"application/json","x-admin-token":token},body:JSON.stringify(body)});document.getElementById("m"+id).textContent=r.ok?" ✓ Saved":" ✕ Save failed";}
+loadRecords();
+</script></body></html>
