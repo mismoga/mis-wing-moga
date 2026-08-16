@@ -1,16 +1,20 @@
-# MIS WING MOGA
+# MIS WING MOGA v2
 
-Final public deployment package. Uses Node.js + PostgreSQL.
+Render:
+- Build: npm install
+- Start: npm start
 
-Render settings:
-- Runtime: Node
-- Branch: main
-- Root Directory: blank
-- Build Command: npm install
-- Start Command: npm start
+Existing:
+- DATABASE_URL = Supabase Session Pooler URI
+- ADMIN_PASSWORD = your update password
 
-Environment variables:
-- DATABASE_URL = your PostgreSQL Internal Database URL
-- ADMIN_PASSWORD = Mismoga (change before production)
+Add:
+- SUPABASE_URL = Supabase project URL
+- SUPABASE_SERVICE_ROLE_KEY = Supabase service-role key (secret; Render environment only)
+- SUPABASE_STORAGE_BUCKET = student-documents
 
-No document upload. No extra tabs. BMIS Remarks only in Update Record.
+Create a private Supabase Storage bucket named `student-documents`.
+The app creates the database columns automatically, but the storage bucket must exist.
+
+
+Document upload limit: 512 KB PDF.
