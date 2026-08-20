@@ -20,7 +20,8 @@ body{margin:0;font-family:Arial;background:#f5f7fb;color:#172033}header{backgrou
 <div><label>Old Class</label><select name="old_class" required class="classopt"></select></div>
 <div><label>New Class</label><select name="new_class" required class="classopt"></select></div>
 <div><label>Email ID</label><input name="email_id" type="email" required></div>
-<div class="full filebox"><label>Upload Associated PDF (required)</label><input id="doc" type="file" accept="application/pdf" required><small>PDF only, maximum 512 KB.</small></div>
+<div class="full filebox"><label>Upload Associated PDF (required)</label><input id="doc" type="file" accept="application/pdf" required>
+<div class="upload-note">For Gender change, kindly attach a copy of Aadhaar Card in PDF.</div><small>PDF only, maximum 512 KB.</small></div>
 <div><button class="btn">Submit Student Record</button></div></form><p id="entryMsg"></p></div></section>
 
 <section id="all" class="page"><div class="panel"><h2>All Records</h2><div class="toolbar"><input id="q" placeholder="Search Block, School, UDISE, PEN, Student, Father or Email" oninput="loadRecords()"><button class="btn" type="button" onclick="exportExcel()">⬇ Export Excel</button></div><div id="records" class="table"></div></div></section>
