@@ -21,3 +21,5 @@ Final deployment package for the MIS Wing Moga student class updation website.
 - SUPABASE_SERVICE_ROLE_KEY
 - SUPABASE_STORAGE_BUCKET=student-documents
 - ADMIN_PASSWORD=Mismoga (or your chosen password)
+
+- Duplicate PEN numbers are blocked in New Entry with both an application check and a database-level unique index.

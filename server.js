@@ -55,6 +55,14 @@ function adminOnly(req, res, next) {
   next();
 }
 
+
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS students_pen_number_unique
+      ON students (pen_number)
+      WHERE pen_number IS NOT NULL AND BTRIM(pen_number) <> ''
+    `);
+
+
 app.post("/api/admin/unlock", (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD)
     return res.status(401).json({ error: "Incorrect password" });
@@ -93,7 +101,18 @@ app.post("/api/records", async (req, res) => {
     const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:true});
     if (up.error) return res.status(500).json({error:"Document upload failed: "+up.error.message});
     const r = await pool.query(
-      `INSERT INTO students
+      `// PEN_DUPLICATE_CHECK
+    const duplicatePen = await pool.query(
+      "SELECT id FROM students WHERE pen_number=$1 LIMIT 1",
+      [p.pen_number]
+    );
+    if (duplicatePen.rowCount) {
+      return res.status(409).json({
+        error:"This PEN number already exists. Duplicate entry is not allowed."
+      });
+    }
+
+INSERT INTO students
        (block_name,school_name,udise_code,pen_number,student_name,father_name,old_class,new_class,old_gender,new_gender,email_id,document_path)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
       [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,filePath]);
