@@ -47,6 +47,12 @@ async function init() {
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS document_path TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS old_gender TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS new_gender TEXT NOT NULL DEFAULT ''`);
+  // Database-level duplicate PEN protection.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS students_pen_number_unique
+    ON students (pen_number)
+    WHERE pen_number IS NOT NULL AND BTRIM(pen_number) <> ''
+  `);
 }
 
 function adminOnly(req, res, next) {
@@ -54,14 +60,6 @@ function adminOnly(req, res, next) {
     return res.status(401).json({ error: "Unauthorized" });
   next();
 }
-
-
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS students_pen_number_unique
-      ON students (pen_number)
-      WHERE pen_number IS NOT NULL AND BTRIM(pen_number) <> ''
-    `);
-
 
 app.post("/api/admin/unlock", (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD)
@@ -100,8 +98,7 @@ app.post("/api/records", async (req, res) => {
     const filePath = `${udiseSafe}/${penSafe}/${pdfFileName}`;
     const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:true});
     if (up.error) return res.status(500).json({error:"Document upload failed: "+up.error.message});
-    const r = await pool.query(
-      `// PEN_DUPLICATE_CHECK
+    // Prevent duplicate PEN numbers before uploading a new document.
     const duplicatePen = await pool.query(
       "SELECT id FROM students WHERE pen_number=$1 LIMIT 1",
       [p.pen_number]
@@ -112,12 +109,21 @@ app.post("/api/records", async (req, res) => {
       });
     }
 
-INSERT INTO students
+    const r = await pool.query(
+      `INSERT INTO students
        (block_name,school_name,udise_code,pen_number,student_name,father_name,old_class,new_class,old_gender,new_gender,email_id,document_path)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
       [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,filePath]);
     res.json({ok:true,id:r.rows[0].id});
-  } catch(e) { res.status(500).json({error:"Could not save record"}); }
+  } catch(e) {
+    if (e && e.code === "23505" && String(e.constraint || "").includes("students_pen_number_unique")) {
+      return res.status(409).json({
+        error: "This PEN number already exists. Duplicate entry is not allowed."
+      });
+    }
+    console.error(e);
+    res.status(500).json({error:"Could not save record"});
+  }
 });
 
 // Securely create a one-time signed URL for the associated PDF.
@@ -127,7 +133,10 @@ app.get("/api/records/:id/document", adminOnly, async (req,res) => {
     const r = await pool.query("SELECT document_path FROM students WHERE id=$1",[req.params.id]);
     if (!r.rowCount || !r.rows[0].document_path) return res.status(404).json({error:"No document attached"});
     const {data,error} = await supabase.storage.from(BUCKET).createSignedUrl(r.rows[0].document_path, 300, {download:true});
-    if (error) return res.status(500).json({error:error.message});
+    if (error) {
+      const status = /not found|NoSuchKey|object not found/i.test(error.message || "") ? 404 : 500;
+      return res.status(status).json({error:error.message});
+    }
     res.json({url:data.signedUrl});
   } catch(e) { res.status(500).json({error:"Could not prepare document download"}); }
 });
@@ -138,7 +147,10 @@ app.get("/api/records/:id/document-preview", adminOnly, async (req,res) => {
     const r = await pool.query("SELECT document_path FROM students WHERE id=$1",[req.params.id]);
     if (!r.rowCount || !r.rows[0].document_path) return res.status(404).json({error:"No document attached"});
     const {data,error} = await supabase.storage.from(BUCKET).createSignedUrl(r.rows[0].document_path, 300);
-    if (error) return res.status(500).json({error:error.message});
+    if (error) {
+      const status = /not found|NoSuchKey|object not found/i.test(error.message || "") ? 404 : 500;
+      return res.status(status).json({error:error.message});
+    }
     res.json({url:data.signedUrl});
   } catch(e) { res.status(500).json({error:"Could not prepare document preview"}); }
 });
