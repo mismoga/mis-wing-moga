@@ -1,20 +1,23 @@
-# MIS WING MOGA v2
+# MIS Wing Moga – Final Website
 
-Render:
-- Build: npm install
-- Start: npm start
+Final deployment package for the MIS Wing Moga student class updation website.
 
-Existing:
-- DATABASE_URL = Supabase Session Pooler URI
-- ADMIN_PASSWORD = your update password
+## Included
+- Public Home data entry with UDISE → Block + School lookup
+- Old Gender and New Gender
+- Nursery through 12th class options
+- Required PDF upload, maximum 512 KB
+- PDF stored in Supabase Storage as `UDISE_PEN_StudentName.pdf`
+- Password-protected Update Record (default password from `ADMIN_PASSWORD`, fallback `Mismoga`)
+- PDF preview before update
+- Download PDF first, then update record
+- After successful update, PDF is deleted from Supabase Storage and the database document reference is cleared
+- All Records search
+- Password-protected Excel export including gender fields
 
-Add:
-- SUPABASE_URL = Supabase project URL
-- SUPABASE_SERVICE_ROLE_KEY = Supabase service-role key (secret; Render environment only)
-- SUPABASE_STORAGE_BUCKET = student-documents
-
-Create a private Supabase Storage bucket named `student-documents`.
-The app creates the database columns automatically, but the storage bucket must exist.
-
-
-Document upload limit: 512 KB PDF.
+## Render environment variables
+- DATABASE_URL
+- SUPABASE_URL (base project URL, not `/rest/v1/`)
+- SUPABASE_SERVICE_ROLE_KEY
+- SUPABASE_STORAGE_BUCKET=student-documents
+- ADMIN_PASSWORD=Mismoga (or your chosen password)

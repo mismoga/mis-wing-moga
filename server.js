@@ -33,6 +33,8 @@ async function init() {
       father_name TEXT NOT NULL,
       old_class TEXT NOT NULL,
       new_class TEXT NOT NULL,
+      old_gender TEXT NOT NULL DEFAULT '',
+      new_gender TEXT NOT NULL DEFAULT '',
       email_id TEXT NOT NULL,
       bmis_remarks TEXT NOT NULL DEFAULT '',
       document_path TEXT NOT NULL DEFAULT '',
@@ -43,6 +45,8 @@ async function init() {
   // Safe upgrades for an existing database.
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS block_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS document_path TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS old_gender TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS new_gender TEXT NOT NULL DEFAULT ''`);
 }
 
 function adminOnly(req, res, next) {
@@ -80,16 +84,19 @@ app.post("/api/records", async (req, res) => {
     const allowed = ["application/pdf"];
     if (!allowed.includes(p.document_type)) return res.status(400).json({error:"Only PDF files are allowed."});
     const raw = Buffer.from(p.document_data, "base64");
-    if (raw.length > 10 * 1024 * 1024) return res.status(400).json({error:"PDF must be 10 MB or smaller."});
-    const safeName = (p.document_name || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `${p.udise_code}/${p.pen_number}/${Date.now()}-${safeName}`;
-    const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:false});
+    if (raw.length > 512 * 1024) return res.status(400).json({error:"PDF must be 512 KB or smaller."});
+    const udiseSafe = String(p.udise_code || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const penSafe = String(p.pen_number || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const studentSafe = String(p.student_name || "Student").replace(/[^a-zA-Z0-9._ -]/g, "").trim().replace(/\s+/g, "_");
+    const pdfFileName = `${udiseSafe}_${penSafe}_${studentSafe}.pdf`;
+    const filePath = `${udiseSafe}/${penSafe}/${pdfFileName}`;
+    const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:true});
     if (up.error) return res.status(500).json({error:"Document upload failed: "+up.error.message});
     const r = await pool.query(
       `INSERT INTO students
-       (block_name,school_name,udise_code,pen_number,student_name,father_name,old_class,new_class,email_id,document_path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,p.old_class,p.new_class,p.email_id,filePath]);
+       (block_name,school_name,udise_code,pen_number,student_name,father_name,old_class,new_class,old_gender,new_gender,email_id,document_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,filePath]);
     res.json({ok:true,id:r.rows[0].id});
   } catch(e) { res.status(500).json({error:"Could not save record"}); }
 });
@@ -106,6 +113,17 @@ app.get("/api/records/:id/document", adminOnly, async (req,res) => {
   } catch(e) { res.status(500).json({error:"Could not prepare document download"}); }
 });
 
+app.get("/api/records/:id/document-preview", adminOnly, async (req,res) => {
+  try {
+    if (!supabase) return res.status(500).json({error:"Storage not configured"});
+    const r = await pool.query("SELECT document_path FROM students WHERE id=$1",[req.params.id]);
+    if (!r.rowCount || !r.rows[0].document_path) return res.status(404).json({error:"No document attached"});
+    const {data,error} = await supabase.storage.from(BUCKET).createSignedUrl(r.rows[0].document_path, 300);
+    if (error) return res.status(500).json({error:error.message});
+    res.json({url:data.signedUrl});
+  } catch(e) { res.status(500).json({error:"Could not prepare document preview"}); }
+});
+
 // The update endpoint requires that the associated document exists.
 app.put("/api/records/:id", adminOnly, async (req,res) => {
   try {
@@ -115,12 +133,48 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
     const p = req.body;
     await pool.query(
       `UPDATE students SET block_name=$1,school_name=$2,udise_code=$3,pen_number=$4,
-       student_name=$5,father_name=$6,old_class=$7,new_class=$8,email_id=$9,
-       bmis_remarks=$10,updated_at=NOW() WHERE id=$11`,
+       student_name=$5,father_name=$6,old_class=$7,new_class=$8,old_gender=$9,new_gender=$10,email_id=$11,
+       bmis_remarks=$12,updated_at=NOW() WHERE id=$13`,
       [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,
-       p.old_class,p.new_class,p.email_id,p.bmis_remarks||"",req.params.id]);
-    res.json({ok:true});
+       p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,p.bmis_remarks||"",req.params.id]);
+
+    const documentPath = r.rows[0].document_path;
+    if (supabase && documentPath) {
+      const del = await supabase.storage.from(BUCKET).remove([documentPath]);
+      if (del.error) {
+        console.error("PDF deletion failed:", del.error.message);
+        return res.json({ok:true,documentDeleted:false,warning:"Record updated, but the PDF could not be deleted."});
+      }
+    }
+    await pool.query("UPDATE students SET document_path='' WHERE id=$1",[req.params.id]);
+    res.json({ok:true,documentDeleted:true});
   } catch(e) { res.status(500).json({error:"Could not update record"}); }
+});
+
+
+app.get("/api/export.xlsx", adminOnly, async (req,res) => {
+  try {
+    const ExcelJS = require("exceljs");
+    const result = await pool.query(`SELECT block_name,school_name,udise_code,pen_number,student_name,father_name,
+      old_gender,new_gender,old_class,new_class,email_id,bmis_remarks,created_at,updated_at
+      FROM students ORDER BY id DESC`);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("All Records");
+    ws.columns = [
+      {header:"Block Name",key:"block_name",width:22},{header:"School Name",key:"school_name",width:32},
+      {header:"UDISE Code",key:"udise_code",width:16},{header:"PEN Number",key:"pen_number",width:16},
+      {header:"Student Name",key:"student_name",width:28},{header:"Father Name",key:"father_name",width:28},
+      {header:"Old Gender",key:"old_gender",width:14},{header:"New Gender",key:"new_gender",width:14},
+      {header:"Old Class",key:"old_class",width:14},{header:"New Class",key:"new_class",width:14},
+      {header:"Email ID",key:"email_id",width:30},{header:"BMIS Remarks",key:"bmis_remarks",width:35},
+      {header:"Created At",key:"created_at",width:24},{header:"Updated At",key:"updated_at",width:24}
+    ];
+    result.rows.forEach(row=>ws.addRow(row)); ws.getRow(1).font={bold:true}; ws.views=[{state:"frozen",ySplit:1}];
+    const buf=await wb.xlsx.writeBuffer();
+    res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition",'attachment; filename="MIS_Wing_Moga_All_Records.xlsx"');
+    res.send(Buffer.from(buf));
+  } catch(e){console.error(e);res.status(500).json({error:"Could not export Excel file"});}
 });
 
 app.use((req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
