@@ -30,10 +30,8 @@ async function init() {
       udise_code TEXT NOT NULL,
       pen_number TEXT NOT NULL,
       student_name TEXT NOT NULL,
-      father_name TEXT NOT NULL,
-      old_class TEXT NOT NULL,
       new_class TEXT NOT NULL,
-      old_gender TEXT NOT NULL DEFAULT '',
+      new_section TEXT NOT NULL DEFAULT '',
       new_gender TEXT NOT NULL DEFAULT '',
       email_id TEXT NOT NULL,
       bmis_remarks TEXT NOT NULL DEFAULT '',
@@ -45,8 +43,12 @@ async function init() {
   // Safe upgrades for an existing database.
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS block_name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS document_path TEXT NOT NULL DEFAULT ''`);
-  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS old_gender TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS new_section TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS new_gender TEXT NOT NULL DEFAULT ''`);
+  // Remove fields no longer used by the MIS Wing workflow.
+  await pool.query(`ALTER TABLE students DROP COLUMN IF EXISTS father_name`);
+  await pool.query(`ALTER TABLE students DROP COLUMN IF EXISTS old_class`);
+  await pool.query(`ALTER TABLE students DROP COLUMN IF EXISTS old_gender`);
   // Database-level duplicate PEN protection.
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS students_pen_number_unique
@@ -75,7 +77,7 @@ app.get("/api/records", async (req, res) => {
     const result = q
       ? await pool.query(`SELECT * FROM students
         WHERE block_name ILIKE $1 OR school_name ILIKE $1 OR udise_code ILIKE $1
-        OR pen_number ILIKE $1 OR student_name ILIKE $1 OR father_name ILIKE $1 OR email_id ILIKE $1
+        OR pen_number ILIKE $1 OR student_name ILIKE $1 OR email_id ILIKE $1
         ORDER BY id DESC`, [like])
       : await pool.query("SELECT * FROM students ORDER BY id DESC");
     res.json(result.rows);
@@ -85,6 +87,8 @@ app.get("/api/records", async (req, res) => {
 app.post("/api/records", async (req, res) => {
   try {
     const p = req.body;
+    if (/^0/.test(String(p.udise_code || "").trim())) return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
+    if (!String(p.new_section || "").trim()) return res.status(400).json({error:"New Section is required."});
     if (!p.document_data) return res.status(400).json({error:"A PDF document is required."});
     if (!supabase) return res.status(500).json({error:"Supabase Storage is not configured."});
     const allowed = ["application/pdf"];
@@ -111,9 +115,9 @@ app.post("/api/records", async (req, res) => {
 
     const r = await pool.query(
       `INSERT INTO students
-       (block_name,school_name,udise_code,pen_number,student_name,father_name,old_class,new_class,old_gender,new_gender,email_id,document_path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,filePath]);
+       (block_name,school_name,udise_code,pen_number,student_name,new_class,new_section,new_gender,email_id,document_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.new_class,p.new_section,p.new_gender||"",p.email_id,filePath]);
     res.json({ok:true,id:r.rows[0].id});
   } catch(e) {
     if (e && e.code === "23505" && String(e.constraint || "").includes("students_pen_number_unique")) {
@@ -164,10 +168,9 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
     const p = req.body;
     await pool.query(
       `UPDATE students SET block_name=$1,school_name=$2,udise_code=$3,pen_number=$4,
-       student_name=$5,father_name=$6,old_class=$7,new_class=$8,old_gender=$9,new_gender=$10,email_id=$11,
-       bmis_remarks=$12,updated_at=NOW() WHERE id=$13`,
-      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.father_name,
-       p.old_class,p.new_class,p.old_gender||"",p.new_gender||"",p.email_id,p.bmis_remarks||"",req.params.id]);
+       student_name=$5,new_class=$6,new_section=$7,new_gender=$8,email_id=$9,
+       bmis_remarks=$10,updated_at=NOW() WHERE id=$11`,
+      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.new_class,p.new_section,p.new_gender||"",p.email_id,p.bmis_remarks||"",req.params.id]);
 
     const documentPath = r.rows[0].document_path;
     if (supabase && documentPath) {
@@ -186,17 +189,17 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
 app.get("/api/export.xlsx", adminOnly, async (req,res) => {
   try {
     const ExcelJS = require("exceljs");
-    const result = await pool.query(`SELECT block_name,school_name,udise_code,pen_number,student_name,father_name,
-      old_gender,new_gender,old_class,new_class,email_id,bmis_remarks,created_at,updated_at
+    const result = await pool.query(`SELECT block_name,school_name,udise_code,pen_number,student_name,
+      new_gender,new_class,new_section,email_id,bmis_remarks,created_at,updated_at
       FROM students ORDER BY id DESC`);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("All Records");
     ws.columns = [
       {header:"Block Name",key:"block_name",width:22},{header:"School Name",key:"school_name",width:32},
       {header:"UDISE Code",key:"udise_code",width:16},{header:"PEN Number",key:"pen_number",width:16},
-      {header:"Student Name",key:"student_name",width:28},{header:"Father Name",key:"father_name",width:28},
-      {header:"Old Gender",key:"old_gender",width:14},{header:"New Gender",key:"new_gender",width:14},
-      {header:"Old Class",key:"old_class",width:14},{header:"New Class",key:"new_class",width:14},
+      {header:"Student Name",key:"student_name",width:28},
+      {header:"New Gender",key:"new_gender",width:14},{header:"New Class",key:"new_class",width:14},
+      {header:"New Section",key:"new_section",width:14},
       {header:"Email ID",key:"email_id",width:30},{header:"BMIS Remarks",key:"bmis_remarks",width:35},
       {header:"Created At",key:"created_at",width:24},{header:"Updated At",key:"updated_at",width:24}
     ];
