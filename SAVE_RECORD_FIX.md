@@ -1,11 +1,7 @@
-MIS Wing Moga save-record fix
+Fixed the INSERT column/expression mismatch.
 
-This version fixes the save failure introduced when Email was removed from the Home tab.
-The API now treats the removed Email field as an empty string instead of inserting NULL
-into the database's NOT NULL email_id column.
+The student INSERT now has exactly 10 target columns and exactly 10 values:
+block_name, school_name, udise_code, pen_number, student_name, new_class,
+new_section, new_gender, bmis_remarks, document_path.
 
-It also verifies/creates the students table immediately before record operations, so a
-deleted table can be recreated automatically when DATABASE_URL is valid.
-
-The API now returns the underlying database/storage error in the response to make future
-configuration problems diagnosable.
+Email is not stored anywhere.

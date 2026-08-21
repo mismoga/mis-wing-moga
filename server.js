@@ -181,9 +181,11 @@ app.post("/api/records", async (req, res) => {
     }
 
     const r = await pool.query(
-      `INSERT INTO students
-       (block_name,school_name,udise_code,pen_number,student_name,new_class,new_section,new_gender,document_path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      `INSERT INTO students (
+        block_name, school_name, udise_code, pen_number, student_name,
+        new_class, new_section, new_gender, bmis_remarks, document_path
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING * RETURNING id`,
       [
         p.block_name || "",
         p.school_name || "",
@@ -193,7 +195,7 @@ app.post("/api/records", async (req, res) => {
         p.new_class || "",
         p.new_section || "",
         p.new_gender || "",
-        
+        p.bmis_remarks || "",
         filePath
       ]);
     res.json({ok:true,id:r.rows[0].id});
