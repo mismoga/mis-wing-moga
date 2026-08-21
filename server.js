@@ -20,6 +20,14 @@ let adminToken = null;
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+let dbReady = false;
+
+async function ensureDatabase() {
+  if (dbReady) return;
+  await init();
+  dbReady = true;
+}
+
 async function init() {
   // The application can safely start even when the students table has
   // previously been deleted.  On every startup we verify/create the schema.
@@ -43,7 +51,6 @@ async function init() {
         new_class TEXT NOT NULL DEFAULT '',
         new_section TEXT NOT NULL DEFAULT '',
         new_gender TEXT NOT NULL DEFAULT '',
-        email_id TEXT NOT NULL DEFAULT '',
         bmis_remarks TEXT NOT NULL DEFAULT '',
         document_path TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -61,7 +68,6 @@ async function init() {
       ["new_class", "TEXT NOT NULL DEFAULT ''"],
       ["new_section", "TEXT NOT NULL DEFAULT ''"],
       ["new_gender", "TEXT NOT NULL DEFAULT ''"],
-      ["email_id", "TEXT NOT NULL DEFAULT ''"],
       ["bmis_remarks", "TEXT NOT NULL DEFAULT ''"],
       ["document_path", "TEXT NOT NULL DEFAULT ''"],
       ["created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()"],
@@ -78,6 +84,7 @@ async function init() {
     await client.query(`ALTER TABLE students DROP COLUMN IF EXISTS father_name`);
     await client.query(`ALTER TABLE students DROP COLUMN IF EXISTS old_class`);
     await client.query(`ALTER TABLE students DROP COLUMN IF EXISTS old_gender`);
+    await client.query(`ALTER TABLE students DROP COLUMN IF EXISTS email_id`);
 
     // Create the duplicate-PEN protection after the table exists.
     // If an old database contains duplicate PEN values, report them clearly
@@ -130,6 +137,7 @@ app.post("/api/admin/unlock", (req, res) => {
 
 app.get("/api/records", async (req, res) => {
   try {
+    await ensureDatabase();
     const q = (req.query.q || "").trim();
     const like = `%${q}%`;
     const result = q
@@ -144,7 +152,8 @@ app.get("/api/records", async (req, res) => {
 
 app.post("/api/records", async (req, res) => {
   try {
-    const p = req.body;
+    await ensureDatabase();
+    const p = req.body || {};
     if (/^0/.test(String(p.udise_code || "").trim())) return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
     if (!String(p.new_section || "").trim()) return res.status(400).json({error:"New Section is required."});
     if (!p.document_data) return res.status(400).json({error:"A PDF document is required."});
@@ -173,9 +182,20 @@ app.post("/api/records", async (req, res) => {
 
     const r = await pool.query(
       `INSERT INTO students
-       (block_name,school_name,udise_code,pen_number,student_name,new_class,new_section,new_gender,email_id,document_path)
+       (block_name,school_name,udise_code,pen_number,student_name,new_class,new_section,new_gender,document_path)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.new_class,p.new_section,p.new_gender||"",p.email_id,filePath]);
+      [
+        p.block_name || "",
+        p.school_name || "",
+        p.udise_code || "",
+        p.pen_number || "",
+        p.student_name || "",
+        p.new_class || "",
+        p.new_section || "",
+        p.new_gender || "",
+        
+        filePath
+      ]);
     res.json({ok:true,id:r.rows[0].id});
   } catch(e) {
     if (e && e.code === "23505" && String(e.constraint || "").includes("students_pen_number_unique")) {
@@ -183,8 +203,9 @@ app.post("/api/records", async (req, res) => {
         error: "This PEN number already exists. Duplicate entry is not allowed."
       });
     }
-    console.error(e);
-    res.status(500).json({error:"Could not save record"});
+    console.error("Save record error:", e);
+    const detail = e && e.message ? e.message : "Unknown database/storage error";
+    res.status(500).json({error:"Could not save record: " + detail});
   }
 });
 
@@ -220,6 +241,7 @@ app.get("/api/records/:id/document-preview", adminOnly, async (req,res) => {
 // The update endpoint requires that the associated document exists.
 app.put("/api/records/:id", adminOnly, async (req,res) => {
   try {
+    await ensureDatabase();
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({error:"Invalid record ID."});
 
@@ -258,7 +280,7 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
       [
         p.block_name || "", p.school_name || "", udise, pen,
         p.student_name || "", p.new_class || "", newSection,
-        p.new_gender || "", p.email_id || "", p.bmis_remarks || "", id
+        p.new_gender || "", p.bmis_remarks || "", id
       ]
     );
 
@@ -292,7 +314,7 @@ app.get("/api/export.xlsx", adminOnly, async (req,res) => {
   try {
     const ExcelJS = require("exceljs");
     const result = await pool.query(`SELECT block_name,school_name,udise_code,pen_number,student_name,
-      new_gender,new_class,new_section,email_id,bmis_remarks,created_at,updated_at
+      new_gender,new_class,new_section,bmis_remarks,created_at,updated_at
       FROM students ORDER BY id DESC`);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("All Records");
