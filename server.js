@@ -162,27 +162,71 @@ app.get("/api/records/:id/document-preview", adminOnly, async (req,res) => {
 // The update endpoint requires that the associated document exists.
 app.put("/api/records/:id", adminOnly, async (req,res) => {
   try {
-    const r = await pool.query("SELECT document_path FROM students WHERE id=$1",[req.params.id]);
-    if (!r.rowCount || !r.rows[0].document_path)
-      return res.status(400).json({error:"No document is attached. Record was not updated."});
-    const p = req.body;
-    await pool.query(
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({error:"Invalid record ID."});
+
+    const existing = await pool.query(
+      "SELECT document_path FROM students WHERE id=$1",
+      [id]
+    );
+    if (!existing.rowCount)
+      return res.status(404).json({error:"Student record not found. Record was not updated."});
+    if (!existing.rows[0].document_path)
+      return res.status(400).json({error:"No PDF is attached. Download the PDF before updating. Record was not updated."});
+
+    const p = req.body || {};
+    const udise = String(p.udise_code || "").trim();
+    const pen = String(p.pen_number || "").trim();
+    const newSection = String(p.new_section || "").trim();
+
+    if (!udise) return res.status(400).json({error:"School UDISE Code is required."});
+    if (/^0/.test(udise)) return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
+    if (!pen) return res.status(400).json({error:"PEN Number is required."});
+    if (!newSection) return res.status(400).json({error:"New Section is required."});
+
+    // If PEN is changed, make sure it does not collide with another student.
+    const duplicatePen = await pool.query(
+      "SELECT id FROM students WHERE pen_number=$1 AND id<>$2 LIMIT 1",
+      [pen, id]
+    );
+    if (duplicatePen.rowCount) {
+      return res.status(409).json({error:"This PEN number already exists. Duplicate entry is not allowed."});
+    }
+
+    const updateResult = await pool.query(
       `UPDATE students SET block_name=$1,school_name=$2,udise_code=$3,pen_number=$4,
        student_name=$5,new_class=$6,new_section=$7,new_gender=$8,email_id=$9,
        bmis_remarks=$10,updated_at=NOW() WHERE id=$11`,
-      [p.block_name,p.school_name,p.udise_code,p.pen_number,p.student_name,p.new_class,p.new_section,p.new_gender||"",p.email_id,p.bmis_remarks||"",req.params.id]);
+      [
+        p.block_name || "", p.school_name || "", udise, pen,
+        p.student_name || "", p.new_class || "", newSection,
+        p.new_gender || "", p.email_id || "", p.bmis_remarks || "", id
+      ]
+    );
 
-    const documentPath = r.rows[0].document_path;
+    if (!updateResult.rowCount)
+      return res.status(404).json({error:"Student record was not found. Record was not updated."});
+
+    // The record is updated only after the browser has successfully downloaded the PDF.
+    // Delete the stored PDF only after the database update succeeds.
+    const documentPath = existing.rows[0].document_path;
     if (supabase && documentPath) {
       const del = await supabase.storage.from(BUCKET).remove([documentPath]);
       if (del.error) {
         console.error("PDF deletion failed:", del.error.message);
-        return res.json({ok:true,documentDeleted:false,warning:"Record updated, but the PDF could not be deleted."});
+        return res.json({ok:true,documentDeleted:false,warning:"Record updated, but the downloaded PDF could not be removed from storage."});
       }
     }
-    await pool.query("UPDATE students SET document_path='' WHERE id=$1",[req.params.id]);
+
+    await pool.query("UPDATE students SET document_path='' WHERE id=$1", [id]);
     res.json({ok:true,documentDeleted:true});
-  } catch(e) { res.status(500).json({error:"Could not update record"}); }
+  } catch(e) {
+    console.error("Record update failed:", e);
+    if (e && e.code === "23505") {
+      return res.status(409).json({error:"This PEN number already exists. Duplicate entry is not allowed."});
+    }
+    res.status(500).json({error:"Could not update record: "+(e.message || "Database error")});
+  }
 });
 
 
