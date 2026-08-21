@@ -143,7 +143,7 @@ app.get("/api/records", async (req, res) => {
     const result = q
       ? await pool.query(`SELECT * FROM students
         WHERE block_name ILIKE $1 OR school_name ILIKE $1 OR udise_code ILIKE $1
-        OR pen_number ILIKE $1 OR student_name ILIKE $1 OR email_id ILIKE $1
+        OR pen_number ILIKE $1 OR student_name ILIKE $1
         ORDER BY id DESC`, [like])
       : await pool.query("SELECT * FROM students ORDER BY id DESC");
     res.json(result.rows);
@@ -180,7 +180,7 @@ app.post("/api/records", async (req, res) => {
       });
     }
 
-    const r = await pool.query(
+    await pool.query(
       `INSERT INTO students (
         block_name, school_name, udise_code, pen_number, student_name,
         new_class, new_section, new_gender, bmis_remarks, document_path
@@ -198,7 +198,7 @@ app.post("/api/records", async (req, res) => {
         filePath || ""
       ]
     );
-    res.json({ok:true,id:r.rows[0].id});
+    res.json({ok:true});
   } catch(e) {
     if (e && e.code === "23505" && String(e.constraint || "").includes("students_pen_number_unique")) {
       return res.status(409).json({
@@ -276,13 +276,22 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
     }
 
     const updateResult = await pool.query(
-      `UPDATE students SET block_name=$1,school_name=$2,udise_code=$3,pen_number=$4,
-       student_name=$5,new_class=$6,new_section=$7,new_gender=$8,email_id=$9,
-       bmis_remarks=$10,updated_at=NOW() WHERE id=$11`,
+      `UPDATE students SET
+       block_name=$1, school_name=$2, udise_code=$3, pen_number=$4,
+       student_name=$5, new_class=$6, new_section=$7, new_gender=$8,
+       bmis_remarks=$9, updated_at=NOW()
+       WHERE id=$10`,
       [
-        p.block_name || "", p.school_name || "", udise, pen,
-        p.student_name || "", p.new_class || "", newSection,
-        p.new_gender || "", p.bmis_remarks || "", id
+        p.block_name || "",
+        p.school_name || "",
+        udise,
+        pen,
+        p.student_name || "",
+        p.new_class || "",
+        newSection,
+        p.new_gender || "",
+        p.bmis_remarks || "",
+        id
       ]
     );
 
@@ -314,6 +323,7 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
 
 app.get("/api/export.xlsx", adminOnly, async (req,res) => {
   try {
+    await ensureDatabase();
     const ExcelJS = require("exceljs");
     const result = await pool.query(`SELECT block_name,school_name,udise_code,pen_number,student_name,
       new_gender,new_class,new_section,bmis_remarks,created_at,updated_at
@@ -325,8 +335,7 @@ app.get("/api/export.xlsx", adminOnly, async (req,res) => {
       {header:"UDISE Code",key:"udise_code",width:16},{header:"PEN Number",key:"pen_number",width:16},
       {header:"Student Name",key:"student_name",width:28},
       {header:"New Gender",key:"new_gender",width:14},{header:"New Class",key:"new_class",width:14},
-      {header:"New Section",key:"new_section",width:14},
-      {header:"Email ID",key:"email_id",width:30},{header:"BMIS Remarks",key:"bmis_remarks",width:35},
+      {header:"New Section",key:"new_section",width:14},{header:"BMIS Remarks",key:"bmis_remarks",width:35},
       {header:"Created At",key:"created_at",width:24},{header:"Updated At",key:"updated_at",width:24}
     ];
     result.rows.forEach(row=>ws.addRow(row)); ws.getRow(1).font={bold:true}; ws.views=[{state:"frozen",ySplit:1}];
@@ -337,11 +346,12 @@ app.get("/api/export.xlsx", adminOnly, async (req,res) => {
   } catch(e){console.error(e);res.status(500).json({error:"Could not export Excel file"});}
 });
 
-app.use((req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
-init().then(()=>app.listen(PORT,()=>console.log(`MIS Wing Moga running on ${PORT}`)))
-  .catch(e=>{console.error(e);process.exit(1)});
-
-
-init()
-  .then(() => app.listen(PORT, () => console.log(`MIS Wing Moga server running on port ${PORT}`)))
-  .catch((err) => { console.error("Server startup aborted:", err); process.exit(1); });
+app.use((req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));init()
+  .then(() => {
+    dbReady = true;
+    app.listen(PORT, () => console.log(`MIS Wing Moga server running on ${PORT}`));
+  })
+  .catch(e => {
+    console.error("Server startup aborted:", e);
+    process.exit(1);
+  });
