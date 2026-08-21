@@ -56,6 +56,8 @@ async function previewPdf(id){
 }
 async function downloadThenUpdate(id){
   let msg=document.getElementById("m"+id);
+  const buttons=document.querySelectorAll(`button[onclick="downloadThenUpdate(${id})"]`);
+  buttons.forEach(b=>b.disabled=true);
   msg.textContent=" Preparing PDF...";
   let dr=await fetch("/api/records/"+id+"/document",{headers:{"x-admin-token":token}});
   if(!dr.ok){msg.textContent=" PDF download could not be prepared. Record was NOT updated.";return}
@@ -82,10 +84,11 @@ async function downloadThenUpdate(id){
     let body={block_name:v("b"),school_name:v("s"),udise_code:v("u"),pen_number:v("p"),student_name:v("n"),new_gender:v("ng"),new_class:v("c"),new_section:v("ns"),email_id:v("e"),bmis_remarks:document.getElementById("r"+id).value};
     let r=await fetch("/api/records/"+id,{method:"PUT",headers:{"Content-Type":"application/json","x-admin-token":token},body:JSON.stringify(body)});
     let j=await r.json();
-    msg.textContent=r.ok?(j.documentDeleted?" ✓ PDF downloaded, record updated and PDF removed.":" ✓ Record updated, but PDF deletion failed."):" ✕ "+(j.error||"Update failed");
-    if(r.ok)setTimeout(findRecords,500);
+    msg.textContent=r.ok?(j.documentDeleted?" ✓ PDF downloaded, record updated and PDF removed.":" ✓ Record updated, but PDF deletion failed."):" ✕ "+(j.error||"Update failed. Record was NOT updated.");
+    if(r.ok)setTimeout(findRecords,500); else buttons.forEach(b=>b.disabled=false);
   }catch(e){
     msg.textContent=" PDF download failed. Record was NOT updated.";
+    buttons.forEach(b=>b.disabled=false);
   }
 }
 init();
