@@ -41,7 +41,7 @@ body{margin:0;font-family:Arial;background:#f5f7fb;color:#172033}header{backgrou
 let token="", schools=[];
 const classes=["Nursery","LKG","UKG","1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th"];
 const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-async function init(){schools=await fetch("/school-master.json").then(r=>r.json());document.querySelectorAll(".classopt").forEach(s=>{s.innerHTML='<option value="">Select class</option>'+classes.map(c=>`<option>${c}</option>`).join("")});document.querySelectorAll(".genderopt").forEach(s=>{s.innerHTML='<option value="">Select gender</option>'+["Male","Female","Other"].map(c=>`<option>${c}</option>`).join("")});}
+async function init(){schools=await fetch("/school-master.json").then(r=>r.json());document.querySelectorAll(".classopt").forEach(s=>{s.innerHTML='<option value="">Select class</option>'+classes.map(c=>`<option>${c}</option>`).join("")});document.querySelectorAll(".genderopt").forEach(s=>{s.innerHTML='<option value="">Select gender</option>'+["Male","Female"].map(c=>`<option>${c}</option>`).join("")});}
 async function lookupSchool(){let code=udise.value.trim();if(/^0/.test(code)){block.value="";school.value="";lookupMsg.textContent="UDISE Code must be entered without a leading zero.";lookupMsg.className="error";return}let x=schools.find(s=>s.udise_code===code);if(x){block.value=x.block_name;school.value=x.school_name;lookupMsg.textContent=" ✓ School found";lookupMsg.className="updated"}else{block.value="";school.value="";lookupMsg.textContent=code?"UDISE Code not found. Check the code.":"";lookupMsg.className="error"}}
 function showPage(id,b){
   if(id==="update") clearUpdateRecordScreen();
