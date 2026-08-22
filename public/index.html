@@ -34,7 +34,7 @@ body{margin:0;font-family:Arial;background:#f5f7fb;color:#172033}header{backgrou
 
 <section id="all" class="page"><div class="panel"><h2>All Records</h2><div class="toolbar"><input id="q" placeholder="Search Block, School, UDISE, PEN or Student" oninput="loadRecords()"><button class="btn" type="button" onclick="exportExcel()">⬇ Export Excel</button></div><div id="records" class="table"></div></div></section>
 
-<section id="update" class="page"><div id="login" class="panel" style="max-width:500px"><h2>🔒 Update Record</h2><div class="notice">Authorized access only.</div><br><input id="pw" type="password" placeholder="Enter update password" autocomplete="off"><br><br><button class="btn" onclick="unlock()">Unlock</button><p id="loginMsg" class="error"></p></div>
+<section id="update" class="page"><div id="login" class="panel" style="max-width:500px"><h2>🔒 Update Record</h2><div class="notice">Authorized access only.</div><br><input id="pw" type="password" placeholder="Enter update password" autocomplete="off"><br><br><button type="button" class="btn" onclick="unlock()">Unlock</button><p id="loginMsg" class="error"></p></div>
 <div id="admin" class="panel" style="display:none"><h2>Update Student Record</h2><div class="toolbar"><input id="uq" placeholder="Search PEN or student name" oninput="findRecords()"></div><div id="editList"></div></div></section>
 </main>
 <script>
@@ -44,7 +44,63 @@ const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replac
 async function init(){schools=await fetch("/school-master.json").then(r=>r.json());document.querySelectorAll(".classopt").forEach(s=>{s.innerHTML='<option value="">Select class</option>'+classes.map(c=>`<option>${c}</option>`).join("")});document.querySelectorAll(".genderopt").forEach(s=>{s.innerHTML='<option value="">Select gender</option>'+["Male","Female","Other"].map(c=>`<option>${c}</option>`).join("")});}
 async function lookupSchool(){let code=udise.value.trim();if(/^0/.test(code)){block.value="";school.value="";lookupMsg.textContent="UDISE Code must be entered without a leading zero.";lookupMsg.className="error";return}let x=schools.find(s=>s.udise_code===code);if(x){block.value=x.block_name;school.value=x.school_name;lookupMsg.textContent=" ✓ School found";lookupMsg.className="updated"}else{block.value="";school.value="";lookupMsg.textContent=code?"UDISE Code not found. Check the code.":"";lookupMsg.className="error"}}
 function showPage(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
-async function loadRecords(){let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));let a=await r.json();records.innerHTML=a.length?`<table><tr><th>Block</th><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th><th>New Gender</th><th>New Class</th><th>New Section</th><th>BMIS Remarks</th></tr>${a.map(x=>`<tr><td>${esc(x.block_name)}</td><td>${esc(x.school_name)}</td><td>${esc(x.udise_code)}</td><td>${esc(x.pen_number)}</td><td>${esc(x.student_name)}</td><td>${esc(x.new_gender)}</td><td>${esc(x.new_class)}</td><td>${esc(x.new_section)}</td><td class="${x.bmis_remarks}?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td></tr>`).join("")}</table>`:"No records found."}
+async function loadRecords(){
+  let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));
+  let a=await r.json();
+  records.innerHTML=a.length?`<table><tr>
+    <th>Block</th><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th>
+    <th>Change Type</th><th>New Gender</th><th>New Class</th><th>New Section</th><th>BMIS Remarks</th>
+  </tr>${a.map(x=>`<tr>
+    <td>${esc(x.block_name)}</td>
+    <td>${esc(x.school_name)}</td>
+    <td>${esc(x.udise_code)}</td>
+    <td>${esc(x.pen_number)}</td>
+    <td>${esc(x.student_name)}</td>
+    <td>${esc(x.change_type||"")}</td>
+    <td>${esc(x.new_gender)}</td>
+    <td>${esc(x.new_class)}</td>
+    <td>${esc(x.new_section)}</td>
+    <td class="${x.bmis_remarks?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td>
+  </tr>`).join("")}</table>`:"No records found."
+}
+async function unlock(){
+  const pw=document.getElementById("pw");
+  const msg=document.getElementById("loginMsg");
+  const login=document.getElementById("login");
+  const admin=document.getElementById("admin");
+  const password=pw ? pw.value : "";
+
+  if(!password){
+    if(msg) msg.textContent="Please enter the update password.";
+    return;
+  }
+
+  try{
+    if(msg) msg.textContent="Checking password...";
+    const response=await fetch("/api/admin/unlock",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({password})
+    });
+    const data=await response.json().catch(()=>({}));
+
+    if(!response.ok){
+      throw new Error(data.error || "Incorrect password.");
+    }
+    if(!data.token){
+      throw new Error("Login failed: server did not return an admin token.");
+    }
+
+    token=data.token;
+    if(login) login.style.display="none";
+    if(admin) admin.style.display="";
+    if(msg) msg.textContent="";
+    await findRecords();
+  }catch(error){
+    token="";
+    if(msg) msg.textContent=error.message || "Unable to unlock Update Record.";
+  }
+}
 entry.onsubmit=async e=>{
   e.preventDefault();
 
