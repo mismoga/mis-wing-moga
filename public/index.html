@@ -34,13 +34,72 @@ async function init(){schools=await fetch("/school-master.json").then(r=>r.json(
 async function lookupSchool(){let code=udise.value.trim();if(/^0/.test(code)){block.value="";school.value="";lookupMsg.textContent="UDISE Code must be entered without a leading zero.";lookupMsg.className="error";return}let x=schools.find(s=>s.udise_code===code);if(x){block.value=x.block_name;school.value=x.school_name;lookupMsg.textContent=" ✓ School found";lookupMsg.className="updated"}else{block.value="";school.value="";lookupMsg.textContent=code?"UDISE Code not found. Check the code.":"";lookupMsg.className="error"}}
 function showPage(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
 async function loadRecords(){let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));let a=await r.json();records.innerHTML=a.length?`<table><tr><th>Block</th><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th><th>New Gender</th><th>New Class</th><th>New Section</th><th>BMIS Remarks</th></tr>${a.map(x=>`<tr><td>${esc(x.block_name)}</td><td>${esc(x.school_name)}</td><td>${esc(x.udise_code)}</td><td>${esc(x.pen_number)}</td><td>${esc(x.student_name)}</td><td>${esc(x.new_gender)}</td><td>${esc(x.new_class)}</td><td>${esc(x.new_section)}</td><td class="${x.bmis_remarks}?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td></tr>`).join("")}</table>`:"No records found."}
-entry.onsubmit=async e=>{e.preventDefault();if(!block.value||!school.value){entryMsg.textContent="Please enter a valid UDISE Code.";entryMsg.className="error";return}let f=doc.files[0];if(!f){entryMsg.textContent="PDF document is required.";return}if(f.size>512*1024){entryMsg.textContent="PDF must be 512 KB or smaller.";return}let b64=await new Promise((res,rej)=>{let r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(f)});let body=Object.fromEntries(new FormData(entry));body.document_data=b64;body.document_name=f.name;body.document_type=f.type;let r=await fetch("/api/records",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});let j=await r.json();entryMsg.textContent=r.ok?"Record submitted successfully.":"Unable to save record: "+(j.error||"");entryMsg.className=r.ok?"updated":"error";if(r.ok)entry.reset();}
-async function unlock(){let r=await fetch("/api/admin/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw.value})});if(!r.ok){loginMsg.textContent="Incorrect password.";return}token=(await r.json()).token;login.style.display="none";admin.style.display="block";findRecords();}
-async function exportExcel(){
-  if(!token){alert("Please unlock Update Record first.");return}
-  const r=await fetch("/api/export.xlsx",{headers:{"x-admin-token":token}});
-  if(!r.ok){alert("Could not export Excel file.");return}
-  const blob=await r.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="MIS_Wing_Moga_All_Records.xlsx"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+entry.onsubmit=async e=>{
+  e.preventDefault();
+  entryMsg.textContent="";
+  entryMsg.className="";
+
+  if(!block.value||!school.value){
+    entryMsg.textContent="Please enter a valid UDISE Code.";
+    entryMsg.className="error"; return;
+  }
+
+  const changeType=document.getElementById("change_type")?.value||"";
+  if(!["Class Change","Gender Change","Name change"].includes(changeType)){
+    entryMsg.textContent="Please select a Change Type.";
+    entryMsg.className="error"; return;
+  }
+
+  const f=doc.files[0];
+  if(!f){
+    entryMsg.textContent="PDF document is required.";
+    entryMsg.className="error"; return;
+  }
+  if(f.type!=="application/pdf"){
+    entryMsg.textContent="Only PDF files are allowed.";
+    entryMsg.className="error"; return;
+  }
+  if(f.size>512*1024){
+    entryMsg.textContent="PDF must be 512 KB or smaller.";
+    entryMsg.className="error"; return;
+  }
+
+  const b64=await new Promise((res,rej)=>{
+    const reader=new FileReader();
+    reader.onload=()=>res(String(reader.result).split(",")[1]);
+    reader.onerror=rej;
+    reader.readAsDataURL(f);
+  });
+
+  const fd=new FormData(entry);
+  const body=Object.fromEntries(fd.entries());
+  body.change_type=changeType;
+  body.document_data=b64;
+  body.document_name=f.name;
+  body.document_type=f.type;
+
+  if(changeType==="Class Change") body.new_gender="N/A";
+  if(changeType==="Gender Change"){body.new_class="N/A";body.new_section="N/A";}
+  if(changeType==="Name change"){body.new_gender="N/A";body.new_class="N/A";body.new_section="N/A";}
+
+  const r=await fetch("/api/records",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)
+  });
+  let j={}; try{j=await r.json();}catch(_){}
+
+  entryMsg.textContent=r.ok
+    ?"Record submitted successfully."
+    :"Unable to save record: "+(j.error||"Server error");
+  entryMsg.className=r.ok?"updated":"error";
+
+  if(r.ok){
+    entry.reset();
+    const ct=document.getElementById("change_type");
+    if(ct)ct.value="";
+    applyHomeChangeType();
+  }
 }
 async function findRecords(){
   if(!token)return;

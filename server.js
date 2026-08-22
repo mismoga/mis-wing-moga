@@ -217,7 +217,7 @@ app.post("/api/records", async (req, res) => {
       p.new_section = "N/A";
     }
     if (/^0/.test(String(p.udise_code || "").trim())) return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
-    if (!String(p.new_section || "").trim()) return res.status(400).json({error:"New Section is required."});
+    if (normalizedChangeType === "Class Change" && !String(p.new_section || "").trim()) return res.status(400).json({error:"New Section is required."});
     if (!p.document_data) return res.status(400).json({error:"A PDF document is required."});
     if (!supabase) return res.status(500).json({error:"Supabase Storage is not configured."});
     const allowed = ["application/pdf"];
