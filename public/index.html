@@ -215,12 +215,7 @@ async function findRecords(){
           : "No PDF attached");
 
     return `<div class="panel"><div class="grid">
-<div><label>Change Type</label><select id="ct${x.id}">
-<option value="">Select Change Type</option>
-<option value="Class Change">Class Change</option>
-<option value="Gender Change">Gender Change</option>
-<option value="Name change">Name change</option>
-</select></div>${field("Block Name","b",x)}${field("School Name","s",x)}${field("UDISE Code","u",x)}${field("PEN Number","p",x)}${field("Student Name","n",x)}${field("New Gender","ng",x)}${field("New Class","c",x)}${field("New Section","ns",x)}
+<div><label>Change Type</label><input id="ct${x.id}" value="${esc(x.change_type||"")}" readonly><input type="hidden" id="ctv${x.id}" value="${esc(x.change_type||"")}"></div>${field("Block Name","b",x)}${field("School Name","s",x)}${field("UDISE Code","u",x)}${field("PEN Number","p",x)}${field("Student Name","n",x)}${field("New Gender","ng",x)}${field("New Class","c",x)}${field("New Section","ns",x)}
 <div class="full"><label>Remarks By BMIS</label><textarea id="r${x.id}" oninput="toggleUpdateButton(${x.id})" placeholder="Enter remarks only after checking the PDF">${esc(x.bmis_remarks)}</textarea></div>
 <div class="full"><strong>Associated PDF:</strong> ${
   hasPdf
@@ -259,12 +254,9 @@ function toggleUpdateButton(id){
 }
 
 
-function field(label,p,x){let map={b:"block_name",s:"school_name",u:"udise_code",p:"pen_number",n:"student_name",ng:"new_gender",c:"new_class",ns:"new_section"};return `<div><label>${label}</label><input id="${p}${x.id}" value="${esc(x[map[p]])}" ${p==="b"||p==="s"?"readonly":""}></div>`}
-async function previewPdf(id){
-  const r=await fetch("/api/records/"+id+"/document-preview",{headers:{"x-admin-token":token}});
-  const j=await r.json();
-  if(!r.ok){alert(j.error||"Could not open PDF");return}
-  window.open(j.url,"_blank","noopener");
+function field(label,p,x){
+  const map={b:"block_name",s:"school_name",u:"udise_code",p:"pen_number",n:"student_name",ng:"new_gender",c:"new_class",ns:"new_section"};
+  return `<div><label>${label}</label><input id="${p}${x.id}" value="${esc(x[map[p]])}" readonly></div>`;
 }
 
 function applyHomeChangeType(){
@@ -368,7 +360,7 @@ async function downloadThenUpdate(id){
       new_gender:v("ng"),
       new_class:v("c"),
       new_section:v("ns"),
-      change_type:document.getElementById("ct"+id)?.value || "",
+      change_type:document.getElementById("ctv"+id)?.value || document.getElementById("ct"+id)?.value || "",
       bmis_remarks:remarks
     };
 
