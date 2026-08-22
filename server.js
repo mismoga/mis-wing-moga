@@ -141,6 +141,7 @@ async function init() {
       `);
     }
 
+    await client.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS change_type TEXT NOT NULL DEFAULT ''`);
     await client.query("COMMIT");
     console.log("MIS database initialization/check completed successfully.");
   } catch (err) {
@@ -200,22 +201,18 @@ app.post("/api/records", async (req, res) => {
     const normalizedChangeType = String(p.change_type || "").trim();
     if (!ALLOWED_CHANGE_TYPES.includes(normalizedChangeType))
       return res.status(400).json({error:"Please select a valid Change Type."});
-    if (normalizedChangeType === "Class Change") p.new_gender = "N/A";
-    if (normalizedChangeType === "Gender Change") { p.new_class="N/A"; p.new_section="N/A"; }
-    if (normalizedChangeType === "Name change") { p.new_gender="N/A"; p.new_class="N/A"; p.new_section="N/A"; }
-    if (!ALLOWED_CHANGE_TYPES.includes(normalizedChangeType))
-      return res.status(400).json({error:"Please select a valid Change Type."});
 
-    if (normalizedChangeType === "Class Change") p.new_gender = "N/A";
-    if (normalizedChangeType === "Gender Change") {
+    if (normalizedChangeType === "Class Change") {
+      p.new_gender = "N/A";
+    } else if (normalizedChangeType === "Gender Change") {
       p.new_class = "N/A";
       p.new_section = "N/A";
-    }
-    if (normalizedChangeType === "Name change") {
+    } else if (normalizedChangeType === "Name change") {
       p.new_gender = "N/A";
       p.new_class = "N/A";
       p.new_section = "N/A";
     }
+
     if (/^0/.test(String(p.udise_code || "").trim())) return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
     if (normalizedChangeType === "Class Change" && !String(p.new_section || "").trim()) return res.status(400).json({error:"New Section is required."});
     if (!p.document_data) return res.status(400).json({error:"A PDF document is required."});
@@ -224,13 +221,6 @@ app.post("/api/records", async (req, res) => {
     if (!allowed.includes(p.document_type)) return res.status(400).json({error:"Only PDF files are allowed."});
     const raw = Buffer.from(p.document_data, "base64");
     if (raw.length > 512 * 1024) return res.status(400).json({error:"PDF must be 512 KB or smaller."});
-    const udiseSafe = String(p.udise_code || "").replace(/[^a-zA-Z0-9_-]/g, "");
-    const penSafe = String(p.pen_number || "").replace(/[^a-zA-Z0-9_-]/g, "");
-    const studentSafe = String(p.student_name || "Student").replace(/[^a-zA-Z0-9._ -]/g, "").trim().replace(/\s+/g, "_");
-    const pdfFileName = `${udiseSafe}_${penSafe}_${studentSafe}.pdf`;
-    const filePath = `${udiseSafe}/${penSafe}/${pdfFileName}`;
-    const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:true});
-    if (up.error) return res.status(500).json({error:"Document upload failed: "+up.error.message});
     // Prevent duplicate PEN numbers before uploading a new document.
     const duplicatePen = await pool.query(
       "SELECT id FROM students WHERE pen_number=$1 LIMIT 1",
@@ -242,7 +232,14 @@ app.post("/api/records", async (req, res) => {
       });
     }
 
-    await pool.query(
+const udiseSafe = String(p.udise_code || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const penSafe = String(p.pen_number || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const studentSafe = String(p.student_name || "Student").replace(/[^a-zA-Z0-9._ -]/g, "").trim().replace(/\s+/g, "_");
+    const pdfFileName = `${udiseSafe}_${penSafe}_${studentSafe}.pdf`;
+    const filePath = `${udiseSafe}/${penSafe}/${pdfFileName}`;
+    const up = await supabase.storage.from(BUCKET).upload(filePath, raw, {contentType:"application/pdf", upsert:true});
+    if (up.error) return res.status(500).json({error:"Document upload failed: "+up.error.message});
+        await pool.query(
       `INSERT INTO students (
         block_name, school_name, udise_code, pen_number, student_name,
         new_class, new_section, new_gender, change_type, bmis_remarks, document_path
@@ -340,22 +337,18 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
     const updateChangeType = String(p.change_type || "").trim();
     if (!ALLOWED_CHANGE_TYPES.includes(updateChangeType))
       return res.status(400).json({error:"Please select a valid Change Type."});
-    if (updateChangeType === "Class Change") p.new_gender = "N/A";
-    if (updateChangeType === "Gender Change") { p.new_class="N/A"; p.new_section="N/A"; }
-    if (updateChangeType === "Name change") { p.new_gender="N/A"; p.new_class="N/A"; p.new_section="N/A"; }
-    if (!ALLOWED_CHANGE_TYPES.includes(updateChangeType))
-      return res.status(400).json({error:"Please select a valid Change Type."});
 
-    if (updateChangeType === "Class Change") p.new_gender = "N/A";
-    if (updateChangeType === "Gender Change") {
+    if (updateChangeType === "Class Change") {
+      p.new_gender = "N/A";
+    } else if (updateChangeType === "Gender Change") {
       p.new_class = "N/A";
       p.new_section = "N/A";
-    }
-    if (updateChangeType === "Name change") {
+    } else if (updateChangeType === "Name change") {
       p.new_gender = "N/A";
       p.new_class = "N/A";
       p.new_section = "N/A";
     }
+
     const udise = String(p.udise_code || "").trim();
     const pen = String(p.pen_number || "").trim();
     const newSection = String(p.new_section || "").trim();
@@ -366,7 +359,7 @@ app.put("/api/records/:id", adminOnly, async (req,res) => {
       return res.status(400).json({error:"School UDISE Code must be entered without a leading zero."});
     if (!pen)
       return res.status(400).json({error:"PEN Number is required."});
-    if (!newSection)
+    if (updateChangeType === "Class Change" && !newSection)
       return res.status(400).json({error:"New Section is required."});
 
     const changeType = String(p.change_type || "").trim();
@@ -481,17 +474,5 @@ app.use((req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));ini
   })
   .catch(e => {
     console.error("Server startup aborted:", e);
-    process.exit(1);
-  });
-
-init()
-  .then(() => {
-    dbReady = true;
-    app.listen(PORT, () => {
-      console.log(`MIS Wing Moga server running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("MIS database initialization failed at startup:", err);
     process.exit(1);
   });
