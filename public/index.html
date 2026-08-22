@@ -13,7 +13,7 @@ body{margin:0;font-family:Arial;background:#f5f7fb;color:#172033}header{backgrou
 <div><label>Block Name</label><input id="block" name="block_name" readonly required></div>
 <div><label>School Name</label><input id="school" name="school_name" readonly required></div>
 <div><label>PEN Number</label><input name="pen_number" required></div>
-<div><label>Student Name</label><input name="student_name" required></div><div><label>Change Type</label><select id="change_type" name="change_type" onchange="applyHomeChangeType()"><option value="">Select Change Type</option><option value="Class Change">Class Change</option><option value="Gender Change">Gender Change</option><option value="Name change">Name change</option></select></div>
+<div><label>Student Name</label><input name="student_name" required></div><div><label>Change Type</label><select id="change_type" name="change_type" onchange="applyHomeChangeType();"><option value="">Select Change Type</option><option value="Class Change">Class Change</option><option value="Gender Change">Gender Change</option><option value="Name change">Name change</option></select></div>
 <div><label>New Gender</label><select name="new_gender" required class="genderopt"></select></div>
 <div><label>New Class</label><select name="new_class" required class="classopt"></select></div>
 <div><label>New Section</label><input name="new_section" required></div>
@@ -114,30 +114,66 @@ async function previewPdf(id){
 }
 
 function applyHomeChangeType(){
-  const type=document.getElementById("change_type")?.value || "";
-  const gender=document.getElementById("new_gender");
-  const cls=document.getElementById("new_class");
-  const section=document.getElementById("new_section");
+  const type = document.getElementById("change_type")?.value || "";
+  const gender = document.getElementById("new_gender");
+  const cls = document.getElementById("new_class");
+  const section = document.getElementById("new_section");
 
-  const genderWrap=gender?.closest("div");
-  const classWrap=cls?.closest("div");
-  const sectionWrap=section?.closest("div");
+  // Find the complete field container. This works even when the input/select
+  // is nested inside a label wrapper.
+  const wrap = el => {
+    if(!el) return null;
+    return el.closest(".field") || el.closest(".form-group") || el.parentElement;
+  };
 
-  if(genderWrap) genderWrap.style.display = type==="Class Change" ? "none" : "";
-  if(classWrap) classWrap.style.display = type==="Gender Change" || type==="Name change" ? "none" : "";
-  if(sectionWrap) sectionWrap.style.display = type==="Gender Change" || type==="Name change" ? "none" : "";
+  const genderWrap = wrap(gender);
+  const classWrap = wrap(cls);
+  const sectionWrap = wrap(section);
 
-  if(type==="Class Change"){
-    if(gender) gender.value="N/A";
-  }else if(type==="Gender Change"){
-    if(cls) cls.value="N/A";
-    if(section) section.value="N/A";
-  }else if(type==="Name change"){
-    if(gender) gender.value="N/A";
-    if(cls) cls.value="N/A";
-    if(section) section.value="N/A";
+  // Start by showing all fields.
+  [genderWrap, classWrap, sectionWrap].forEach(el => {
+    if(el) {
+      el.hidden = false;
+      el.style.display = "";
+    }
+  });
+
+  if(type === "Class Change"){
+    if(gender) gender.value = "N/A";
+    if(genderWrap) {
+      genderWrap.hidden = true;
+      genderWrap.style.display = "none";
+    }
+  }
+
+  if(type === "Gender Change"){
+    if(cls) cls.value = "N/A";
+    if(section) section.value = "N/A";
+    if(classWrap) {
+      classWrap.hidden = true;
+      classWrap.style.display = "none";
+    }
+    if(sectionWrap) {
+      sectionWrap.hidden = true;
+      sectionWrap.style.display = "none";
+    }
+  }
+
+  if(type === "Name change"){
+    if(gender) gender.value = "N/A";
+    if(cls) cls.value = "N/A";
+    if(section) section.value = "N/A";
+    [genderWrap, classWrap, sectionWrap].forEach(el => {
+      if(el) {
+        el.hidden = true;
+        el.style.display = "none";
+      }
+    });
   }
 }
+
+// Apply the initial state when the Home tab/form is loaded.
+document.addEventListener("DOMContentLoaded", applyHomeChangeType);
 
 async function downloadThenUpdate(id){
   const msg=document.getElementById("m"+id);
