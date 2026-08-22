@@ -222,47 +222,52 @@ function clearUpdateRecordScreen(){
   if(editList) editList.innerHTML="";
 }
 async function findRecords(){
-  const searchValue=String(document.getElementById("uq")?.value||"").trim();
+  const search=document.getElementById("uq");
   const list=document.getElementById("editList");
+  const searchValue=search ? search.value.trim() : "";
+
   if(!searchValue){
     if(list) list.innerHTML="";
     return;
   }
-  if(!token)return;
-  let r=await fetch("/api/records?q="+encodeURIComponent(uq.value||""),{
-    headers:{"x-admin-token":token}
-  });
-  let a=await r.json();
 
-  editList.innerHTML=a.length?a.map(x=>{
-    const hasPdf=!!x.document_path;
-    const hasRemarks=!!String(x.bmis_remarks||"").trim();
-    const completed=x.bmis_status==="UPDATED_BY_BMIS" || (!hasPdf && hasRemarks);
-    const canUpdate=hasPdf && hasRemarks && !completed;
-    const status=completed
-      ? "✓ Updated by BMIS"
-      : (hasPdf
-          ? (hasRemarks ? "✓ PDF checked — ready to Download & Update" : "Enter BMIS Remarks after checking PDF")
-          : "No PDF attached");
+  try{
+    const r=await fetch("/api/records?q="+encodeURIComponent(searchValue),{
+      headers:{"x-admin-token":token}
+    });
+    if(!r.ok){
+      if(list) list.innerHTML="";
+      return;
+    }
 
-    return `<div class="panel"><div class="grid">
+    const a=await r.json();
+
+    if(!Array.isArray(a) || a.length===0){
+      if(list) list.innerHTML="";
+      return;
+    }
+
+    list.innerHTML=a.map(x=>{
+      const hasPdf=!!x.document_path;
+      const hasRemarks=!!String(x.bmis_remarks||"").trim();
+      const completed=x.bmis_status==="UPDATED_BY_BMIS" || (!hasPdf && hasRemarks);
+      const canUpdate=hasPdf && hasRemarks && !completed;
+      const status=completed ? "✓ Updated by BMIS"
+        : (hasPdf ? (hasRemarks ? "✓ PDF checked — ready to Download & Update" : "Enter BMIS Remarks after checking PDF")
+                  : "No PDF attached");
+
+      return `<div class="panel"><div class="grid">
 <div><label>Change Type</label><input id="ct${x.id}" value="${esc(x.change_type||"")}" readonly><input type="hidden" id="ctv${x.id}" value="${esc(x.change_type||"")}"></div>${field("Block Name","b",x)}${field("School Name","s",x)}${field("UDISE Code","u",x)}${field("PEN Number","p",x)}${field("Student Name","n",x)}${field("New Gender","ng",x)}${field("New Class","c",x)}${field("New Section","ns",x)}
 <div class="full"><label>Remarks By BMIS</label><textarea id="r${x.id}" oninput="toggleUpdateButton(${x.id})" placeholder="Enter remarks only after checking the PDF">${esc(x.bmis_remarks)}</textarea></div>
-<div class="full"><strong>Associated PDF:</strong> ${
-  hasPdf
-    ? `Available — <button type="button" class="btn" onclick="previewPdf(${x.id})">Preview PDF</button>`
-    : (completed
-        ? "<span class='updated'>PDF deleted after successful BMIS update</span>"
-        : "<span class='error'>No document attached</span>")
-}</div>
-</div><br>
-<div class="workflow-status" id="ur${x.id}">${status}</div>
-<button id="ub${x.id}" class="btn green" data-has-pdf="${hasPdf?"1":"0"}" ${canUpdate?"":"disabled"} onclick="downloadThenUpdate(${x.id})">Download PDF &amp; Update Record</button>
-<span id="m${x.id}"></span>
-</div>`;
-  }).join(""):"No matching record.";
+<div class="full"><strong>Associated PDF:</strong> ${hasPdf ? `Available — <button type="button" class="btn" onclick="previewPdf(${x.id})">Preview PDF</button>` : (completed ? "<span class='updated'>PDF deleted after successful BMIS update</span>" : "<span class='error'>No document attached</span>")}</div>
+</div><br><div class="workflow-status" id="ur${x.id}">${status}</div>
+<button id="ub${x.id}" type="button" class="btn green" data-has-pdf="${hasPdf?"1":"0"}" ${canUpdate?"":"disabled"} onclick="downloadThenUpdate(${x.id})">Download PDF &amp; Update Record</button>
+<span id="m${x.id}"></span></div>`;
+    }).join("");
+  }catch(e){
+    if(list) list.innerHTML="";
+  }
 }
-
 function toggleUpdateButton(id){
   const button=document.getElementById("ub"+id);
   const status=document.getElementById("ur"+id);
@@ -333,6 +338,25 @@ function applyHomeChangeType(){
 document.addEventListener("DOMContentLoaded", applyHomeChangeType);
 
 
+async function previewPdf(id){
+  const msg=document.getElementById("m"+id);
+  try{
+    if(!token) throw new Error("Please unlock Update Record first.");
+
+    if(msg) msg.textContent=" Opening PDF...";
+    const r=await fetch("/api/records/"+id+"/document-preview",{
+      headers:{"x-admin-token":token}
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok || !data.url) throw new Error(data.error||"Could not open PDF.");
+
+    const win=window.open(data.url,"_blank");
+    if(!win) throw new Error("Browser blocked the PDF window. Please allow pop-ups for this site.");
+    if(msg) msg.textContent="";
+  }catch(e){
+    if(msg) msg.textContent=" ✕ "+(e.message||"Could not open PDF.");
+  }
+}
 async function downloadThenUpdate(id){
   const msg=document.getElementById("m"+id);
   const button=document.getElementById("ub"+id);
@@ -387,11 +411,10 @@ async function downloadThenUpdate(id){
       udise_code:v("u"),
       pen_number:v("p"),
       student_name:v("n"),
-      change_type:document.getElementById("change_type")?.value || "",
+      change_type:document.getElementById("ctv"+id)?.value || document.getElementById("ct"+id)?.value || "",
       new_gender:v("ng"),
       new_class:v("c"),
       new_section:v("ns"),
-      change_type:document.getElementById("ctv"+id)?.value || document.getElementById("ct"+id)?.value || "",
       bmis_remarks:remarks
     };
 
