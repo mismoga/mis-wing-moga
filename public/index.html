@@ -43,7 +43,8 @@ const classes=["Nursery","LKG","UKG","1st","2nd","3rd","4th","5th","6th","7th","
 const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 async function init(){schools=await fetch("/school-master.json").then(r=>r.json());document.querySelectorAll(".classopt").forEach(s=>{s.innerHTML='<option value="">Select class</option>'+classes.map(c=>`<option>${c}</option>`).join("")});document.querySelectorAll(".genderopt").forEach(s=>{s.innerHTML='<option value="">Select gender</option>'+["Male","Female","Other"].map(c=>`<option>${c}</option>`).join("")});}
 async function lookupSchool(){let code=udise.value.trim();if(/^0/.test(code)){block.value="";school.value="";lookupMsg.textContent="UDISE Code must be entered without a leading zero.";lookupMsg.className="error";return}let x=schools.find(s=>s.udise_code===code);if(x){block.value=x.block_name;school.value=x.school_name;lookupMsg.textContent=" ✓ School found";lookupMsg.className="updated"}else{block.value="";school.value="";lookupMsg.textContent=code?"UDISE Code not found. Check the code.":"";lookupMsg.className="error"}}
-function showPage(id,b){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
+function showPage(id,b){
+  if(page==="update") clearUpdateRecordScreen();document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
 async function loadRecords(){
   let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));
   let a=await r.json();
@@ -95,7 +96,11 @@ async function unlock(){
     if(login) login.style.display="none";
     if(admin) admin.style.display="";
     if(msg) msg.textContent="";
-    await findRecords();
+    const searchBox=document.getElementById("uq");
+    const editList=document.getElementById("editList");
+    if(searchBox) searchBox.value="";
+    if(editList) editList.innerHTML="";
+    if(searchBox) searchBox.focus();
   }catch(error){
     token="";
     if(msg) msg.textContent=error.message || "Unable to unlock Update Record.";
@@ -196,7 +201,19 @@ entry.onsubmit=async e=>{
     if(submitButton) submitButton.disabled=false;
   }
 }
+function clearUpdateRecordScreen(){
+  const searchBox=document.getElementById("uq");
+  const editList=document.getElementById("editList");
+  if(searchBox) searchBox.value="";
+  if(editList) editList.innerHTML="";
+}
 async function findRecords(){
+  const searchValue=String(document.getElementById("uq")?.value||"").trim();
+  const list=document.getElementById("editList");
+  if(!searchValue){
+    if(list) list.innerHTML="";
+    return;
+  }
   if(!token)return;
   let r=await fetch("/api/records?q="+encodeURIComponent(uq.value||""),{
     headers:{"x-admin-token":token}
@@ -382,7 +399,16 @@ async function downloadThenUpdate(id){
     msg.textContent=j.documentDeleted
       ? " ✓ PDF downloaded, BMIS remarks updated, and PDF deleted."
       : " ✓ PDF downloaded and BMIS remarks updated. PDF deletion failed.";
-    setTimeout(findRecords,700);
+
+    // Update is complete: clear the current student immediately.
+    // Keep only the search box so BMIS can search for the next student.
+    const editList=document.getElementById("editList");
+    const searchBox=document.getElementById("uq");
+    if(editList) editList.innerHTML="";
+    if(searchBox){
+      searchBox.value="";
+      setTimeout(()=>searchBox.focus(),50);
+    }
   }catch(e){
     msg.textContent=" ✕ "+(e.message||"PDF download/update failed. BMIS remarks were NOT updated.");
     button.disabled=false;
