@@ -115,22 +115,20 @@ async function previewPdf(id){
 
 function applyHomeChangeType(){
   const type = document.getElementById("change_type")?.value || "";
-  const gender = document.getElementById("new_gender");
-  const cls = document.getElementById("new_class");
-  const section = document.getElementById("new_section");
+  const form = document.getElementById("entry");
+  if(!form) return;
 
-  // Find the complete field container. This works even when the input/select
-  // is nested inside a label wrapper.
-  const wrap = el => {
-    if(!el) return null;
-    return el.closest(".field") || el.closest(".form-group") || el.parentElement;
-  };
+  // Home-tab controls use name attributes, not ids.
+  const gender = form.querySelector('[name="new_gender"]');
+  const cls = form.querySelector('[name="new_class"]');
+  const section = form.querySelector('[name="new_section"]');
 
+  // Each Home field is a direct grid child, so hide its complete field row.
+  const wrap = el => el ? el.parentElement : null;
   const genderWrap = wrap(gender);
   const classWrap = wrap(cls);
   const sectionWrap = wrap(section);
 
-  // Start by showing all fields.
   [genderWrap, classWrap, sectionWrap].forEach(el => {
     if(el) {
       el.hidden = false;
@@ -139,41 +137,20 @@ function applyHomeChangeType(){
   });
 
   if(type === "Class Change"){
-    if(gender) gender.value = "N/A";
-    if(genderWrap) {
-      genderWrap.hidden = true;
-      genderWrap.style.display = "none";
-    }
-  }
-
-  if(type === "Gender Change"){
-    if(cls) cls.value = "N/A";
-    if(section) section.value = "N/A";
-    if(classWrap) {
-      classWrap.hidden = true;
-      classWrap.style.display = "none";
-    }
-    if(sectionWrap) {
-      sectionWrap.hidden = true;
-      sectionWrap.style.display = "none";
-    }
-  }
-
-  if(type === "Name change"){
-    if(gender) gender.value = "N/A";
-    if(cls) cls.value = "N/A";
-    if(section) section.value = "N/A";
-    [genderWrap, classWrap, sectionWrap].forEach(el => {
-      if(el) {
-        el.hidden = true;
-        el.style.display = "none";
-      }
+    if(genderWrap){ genderWrap.hidden=true; genderWrap.style.display="none"; }
+  }else if(type === "Gender Change"){
+    if(classWrap){ classWrap.hidden=true; classWrap.style.display="none"; }
+    if(sectionWrap){ sectionWrap.hidden=true; sectionWrap.style.display="none"; }
+  }else if(type === "Name change"){
+    [genderWrap,classWrap,sectionWrap].forEach(el => {
+      if(el){ el.hidden=true; el.style.display="none"; }
     });
   }
 }
 
 // Apply the initial state when the Home tab/form is loaded.
 document.addEventListener("DOMContentLoaded", applyHomeChangeType);
+
 
 async function downloadThenUpdate(id){
   const msg=document.getElementById("m"+id);
