@@ -44,25 +44,39 @@ const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replac
 async function init(){schools=await fetch("/school-master.json").then(r=>r.json());document.querySelectorAll(".classopt").forEach(s=>{s.innerHTML='<option value="">Select class</option>'+classes.map(c=>`<option>${c}</option>`).join("")});document.querySelectorAll(".genderopt").forEach(s=>{s.innerHTML='<option value="">Select gender</option>'+["Male","Female","Other"].map(c=>`<option>${c}</option>`).join("")});}
 async function lookupSchool(){let code=udise.value.trim();if(/^0/.test(code)){block.value="";school.value="";lookupMsg.textContent="UDISE Code must be entered without a leading zero.";lookupMsg.className="error";return}let x=schools.find(s=>s.udise_code===code);if(x){block.value=x.block_name;school.value=x.school_name;lookupMsg.textContent=" ✓ School found";lookupMsg.className="updated"}else{block.value="";school.value="";lookupMsg.textContent=code?"UDISE Code not found. Check the code.":"";lookupMsg.className="error"}}
 function showPage(id,b){
-  if(page==="update") clearUpdateRecordScreen();document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");if(id==="all")loadRecords();}
+  if(id==="update") clearUpdateRecordScreen();
+
+  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+  const target=document.getElementById(id);
+  if(target) target.classList.add("active");
+
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));
+  if(b) b.classList.add("active");
+
+  if(id==="all") loadRecords();
+}
 async function loadRecords(){
-  let r=await fetch("/api/records?q="+encodeURIComponent(q.value||""));
-  let a=await r.json();
-  records.innerHTML=a.length?`<table><tr>
-    <th>Block</th><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th>
-    <th>Change Type</th><th>New Gender</th><th>New Class</th><th>New Section</th><th>BMIS Remarks</th>
-  </tr>${a.map(x=>`<tr>
-    <td>${esc(x.block_name)}</td>
-    <td>${esc(x.school_name)}</td>
-    <td>${esc(x.udise_code)}</td>
-    <td>${esc(x.pen_number)}</td>
-    <td>${esc(x.student_name)}</td>
-    <td>${esc(x.change_type||"")}</td>
-    <td>${esc(x.new_gender)}</td>
-    <td>${esc(x.new_class)}</td>
-    <td>${esc(x.new_section)}</td>
-    <td class="${x.bmis_remarks?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td>
-  </tr>`).join("")}</table>`:"No records found."
+  const search=document.getElementById("q");
+  const table=document.getElementById("records");
+  const query=search ? search.value.trim() : "";
+
+  try{
+    const r=await fetch("/api/records?q="+encodeURIComponent(query));
+    const a=await r.json();
+    table.innerHTML=a.length?`<table><tr>
+      <th>Block</th><th>School</th><th>UDISE</th><th>PEN</th><th>Student</th>
+      <th>Change Type</th><th>New Gender</th><th>New Class</th><th>New Section</th><th>BMIS Remarks</th>
+    </tr>${a.map(x=>`<tr>
+      <td>${esc(x.block_name)}</td><td>${esc(x.school_name)}</td>
+      <td>${esc(x.udise_code)}</td><td>${esc(x.pen_number)}</td>
+      <td>${esc(x.student_name)}</td><td>${esc(x.change_type||"")}</td>
+      <td>${esc(x.new_gender)}</td><td>${esc(x.new_class)}</td>
+      <td>${esc(x.new_section)}</td>
+      <td class="${x.bmis_remarks?'updated':'pending'}">${esc(x.bmis_remarks||"Pending to Update")}</td>
+    </tr>`).join("")}</table>`:"No records found.";
+  }catch(e){
+    table.innerHTML=`<div class="error">Unable to load records: ${esc(e.message||"Server error")}</div>`;
+  }
 }
 async function unlock(){
   const pw=document.getElementById("pw");
